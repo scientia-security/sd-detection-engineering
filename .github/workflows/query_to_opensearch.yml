@@ -1,0 +1,57 @@
+name: Search OpenSearch with JSON from query-rules
+
+on:
+  workflow_run:
+    workflows: [Process CSV Files and Save Output to query-rules]
+    types:
+      - completed
+  workflow_dispatch:  # 手動実行も許可
+      
+jobs:
+  search-opensearch:
+    runs-on: ubuntu-latest
+
+    steps:
+      # リポジトリをチェックアウト
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # JSON ファイルごとに OpenSearch に検索リクエストを送信し結果を解析
+      - name: Search OpenSearch
+        env:
+          OPENSEARCH_URL: ${{ secrets.OPENSEARCH_URL }}  # OpenSearch の URL (GitHub Secrets を使用)
+          OPENSEARCH_USERNAME: ${{ secrets.OPENSEARCH_USERNAME }}  # ユーザー名 (GitHub Secrets を使用)
+          OPENSEARCH_PASSWORD: ${{ secrets.OPENSEARCH_PASSWORD }}  # パスワード (GitHub Secrets を使用)
+        run: |
+          for file in query-rules/*.json; do
+            echo "Processing $file"
+
+            # ファイル内容を読み込む
+            QUERY=$(cat "$file")
+
+            # OpenSearch にリクエストを送信
+            RESPONSE=$(curl -s -X POST "$OPENSEARCH_URL/_search" \
+              -H "Content-Type: application/json" \
+              -u "$OPENSEARCH_USERNAME:$OPENSEARCH_PASSWORD" \
+              -d "$QUERY")
+            # echo "Response: $RESPONSE"           
+
+            # レスポンスコードと内容を確認
+            STATUS=$(echo "$RESPONSE" | jq -r '.status // 200')
+            if [ "$STATUS" != "200" ]; then
+              echo "Error: OpenSearch query failed with status $STATUS"
+              echo "Response: $RESPONSE"
+              exit 1
+            fi
+
+            # hits.total.value を取得
+            HITS_TOTAL=$(echo "$RESPONSE" | jq -r '.hits.total.value // 0')
+
+            # 条件に応じて出力
+            if [ "$HITS_TOTAL" -gt 0 ]; then
+              echo "Matched: $HITS_TOTAL hits found."
+            else
+              echo "Unmatched: No hits found."
+            fi
+          done
+        

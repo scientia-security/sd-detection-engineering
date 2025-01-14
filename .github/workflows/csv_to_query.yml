@@ -1,0 +1,44 @@
+name: Process CSV Files and Save Output to query-rules
+
+on:
+  push:
+    paths:
+      - csv-rules/*.csv  # csv-rules ディレクトリの CSV ファイルが変更された時にトリガー
+
+jobs:
+  process-csv:
+    runs-on: ubuntu-latest
+
+    steps:
+      # リポジトリをチェックアウト
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Python 環境をセットアップ
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+
+      # 必要な Python パッケージをインストール
+      - name: Install dependencies
+        run: pip install pandas
+
+      # CSV ファイルごとに generate_query.py を実行し、JSON ファイルを query-rules に移動
+      - name: Process CSV files
+        run: |
+          for file in csv-rules/*.csv; do
+            echo "Processing $file"
+            python .github/workflows/generate_query.py --file "$file"
+            # 移動: *.json を query-rules ディレクトリに格納
+            mv query_*.json query-rules/
+          done
+
+      # query-rules ディレクトリの変更をコミット (必要に応じて)
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add query-rules/
+          git commit -m "Update query-rules with new JSON files" || echo "No changes to commit"
+          git push
